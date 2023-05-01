@@ -13,7 +13,7 @@ from torch_scatter import scatter_max
 # Already imported above
 
 # 3. Load the MUTAG dataset
-dataset = TUDataset(root='data/TUDataset', name='Mutagenicity')
+dataset = TUDataset(root='data/TUDataset', name='AIDS')
 print(f"Dataset: {dataset}:")
 print("====================")
 print(f"Number of graphs: {len(dataset)}")
@@ -35,12 +35,12 @@ class GCN(torch.nn.Module):
         output_noise = 1000
         
         
-        # Add node feature noise
-        if train:
-            inter_noise = self.linear2(x)
-            noise = (inter_noise - inter_noise.mean(dim=0))/inter_noise.std(dim=0)
-            x = x + noise
-            output_noise = torch.sum(noise, dim=1)
+        # # Add node feature noise
+        # if train:
+        #     inter_noise = self.linear2(x)
+        #     noise = (inter_noise - inter_noise.mean(dim=0))/inter_noise.std(dim=0)
+        #     x = x + noise
+        #     output_noise = torch.sum(noise, dim=1)
         
         # make edge pertubation
         if train:
@@ -59,27 +59,8 @@ class GCN(torch.nn.Module):
             
             # print(edge_softmax)
             max_values, max_indices = scatter_max(edge_softmax, edge_batch, dim=0)
-
-            # Compute the global indices of the max values
-            # cumulative_node_counts = torch.cat([torch.tensor([0]).to(device), edge_batch.bincount()[:-1]]).cumsum(dim=0)
-            
-            # print(f"check: {max_indices.squeeze().size()}")
-            # print(max_indices.squeeze())
-            # print(f"num: {cumulative_node_counts.size()}")
-            # print(cumulative_node_counts)
             global_max_indices = max_indices.squeeze()
-            # global_max_indices = global_max_indices
-            additional_indices = []
-            # for id in global_max_indices:
-            #     if id%2 == 1:
-            #         additional_indices.append(id+1)
-            #     elif id%2 == 0:
-            #         additional_indices.append(id-1)
-            #     else:
-            #         print("Error")
-            # selected_indices = torch.cat((global_max_indices, torch.tensor(additional_indices).to(device)), dim=0)
             selected_indices = global_max_indices
-            
             
             # Create a mask for the complement of global_max_indices
             total_nodes = edge_index.size(1)
@@ -98,13 +79,13 @@ class GCN(torch.nn.Module):
 
 # 5. Split the dataset into train and test sets
 dataset = dataset.shuffle()
-train_dataset = dataset[:3500]
-test_dataset = dataset[3500:]
+train_dataset = dataset[:1700]
+test_dataset = dataset[1700:]
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # 6. Train the model
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 model = GCN(hidden_channels=64).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 criterion = torch.nn.CrossEntropyLoss()
@@ -116,14 +97,14 @@ def train():
     for data in train_loader:
         data = data.to(device)
         optimizer.zero_grad()
-        out, noise = model(data, train=True)
+        out, noise = model(data, train=False)
         pred = out.argmax(dim=1)
         correct += int((pred == data.y).sum())
         
-        loss = 0.9*criterion(out, data.y)
+        loss = criterion(out, data.y)
         target = torch.zeros_like(data.x[:,0])
 
-        # loss += 0.1*mse_loss(noise, target)
+        # loss += 0.5*mse_loss(noise, target)
         loss.backward()
         optimizer.step()
     return correct / len(train_loader.dataset)
